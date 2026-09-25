@@ -84,7 +84,14 @@ Frontend fixes:
 - Axios 401 interceptor drops dead tokens so UI falls back to signed-out state.
 - Market terminal shows an explicit feed-error banner instead of a blank chart on fetch failure.
 DB live verification (Atlas `tradingbot`): seed created `demo@tradepilot.app / demo1234` + sample bot; login → portfolio ($100,000) → backtest BTC/SMA +7.5% (22 trades on live klines) → bot lifecycle create → start(active) → stop(stopped) → delete(ok) → trades readable. All HTTP expectations met (400/404/200).
-`.env` with Atlas URI + generated JWT secret lives only in `server/.env` (gitignored, never committed).
+`.env` with Atlas URI + generated JWT secret lives only in `server/.env` (gitignored, never committed — re-verified with `git check-ignore`).
+
+### 3.5 Phase 4 — Status-code console logging + CORS hardening (2026-09-25, verified)
+- **Every API call now logs one line ending in its status code:** `2026-09-25T…Z | GET /api/health → 200 (2.1 ms)` — ISO timestamp, color by class (2xx green, 3xx cyan, 4xx yellow, 5xx red) so failures jump out in Render logs. Verified live: 200/401/404/400/403 lines all print correctly, stderr empty.
+- **CORS is typo-proof:** origins are trimmed + trailing slashes stripped at boot, so Render `CLIENT_URL=https://…vercel.app/` (the exact value that broke login) now works identically to the slash-free form. Multi-origin comma lists supported; optional `CLIENT_ALLOW_PREVIEW=true` admits `*.vercel.app` preview deploys. Blocked origins get a clean `403 {error:'Origin not allowed'}` + one log line — no longer a misleading 500 with stack. Boot prints `[cors] allowed origins: …` for debuggability.
+- Local `server/.env`: `CLIENT_URL=http://localhost:3000,https://trading-bot-sigma-six.vercel.app` (both dev + prod).
+- Verified matrix (fresh boot on :5050): Vercel origin → 200 + correct `Access-Control-Allow-Origin`, localhost → 200, evil → 403, no-token → 401, unknown → 404, bad interval → 400.
+- Bonus: `EADDRINUSE` now prints one clear line (`port X already in use — stop the other server or set PORT=5050`) instead of a crash dump. (Found while testing: the user's own `npm run dev` still held :5000 — all "mystery" failures were port collisions, no code bug.)
 Frontend dev-log review (Next 14.2.35 `next dev`): all 6 routes compile clean — zero warnings, zero errors, zero stderr output; `GET / /bots /login /backtest /history /markets/BTCUSDT` → all 200. Backend log review: pre-login 401s are correct signed-out behavior; post-login portfolio/bots/trades/backtest 200; bot start→stop→delete lifecycle 200; `- - ms - -` lines are aborted prefetch/StrictMode requests (harmless); 304s are Express ETag revalidations (harmless).
 
 ### 3.5 Known gaps (stated so reviewers see judgment, not oversights)
