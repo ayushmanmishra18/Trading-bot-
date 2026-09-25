@@ -278,6 +278,7 @@ Bad input gets clear `400` errors (e.g. unknown strategy, capital under $100, ba
 - **Bot engine math:** synthetic 100-candle series → SMA +5.33%, MACD +5.61% (RSI correctly 0 trades on a monotonic ramp).
 - **Frontend:** clean `next build` (7 routes, valid `BUILD_ID`); dev server compiles all 6 pages with zero warnings/errors; production server serves all 6 routes HTTP 200.
 - **Full user flow on live DB:** seed → login → portfolio $100,000 → seeded bot listed → backtest → lifecycle — all green.
+- **Playwright E2E (`cd client; npm run test:e2e`): 17/17 green** — `e2e/api.spec.js` (10 tests: every endpoint incl. 400/401/404 paths) + `e2e/app.spec.js` (7 tests: shell on all routes, form login, authed dashboard, UI bot deploy → start → stop → retire with cleanup, lab verdict + chart, ledger, candle canvas + timeframe switch). Tests target running dev servers (`:3000`/`:5000`); override with `E2E_WEB_URL`/`E2E_API_URL`. UI bot test uses a timestamped name and retires it, leaving the demo account clean.
 
 ---
 

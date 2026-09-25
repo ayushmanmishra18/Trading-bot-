@@ -1,7 +1,33 @@
+# dependencies
 node_modules/
+
+# next.js
 .next/
-dist/
+out/
+build/
+
+# env secrets — every variant (examples stay tracked: *.example never matches)
 .env
 .env.local
+.env.*.local
+.env.development
+.env.production
+*.pem
+
+# logs / test output
 *.log
+npm-debug.log*
+coverage/
+playwright-report/
+test-results/
+
+# os clutter
 .DS_Store
+Thumbs.db
+Desktop.ini
+
+# deploy CLIs
+.vercel/
+
+# misc
+dist/

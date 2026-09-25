@@ -92,6 +92,17 @@ DB live verification (Atlas `tradingbot`): seed created `demo@tradepilot.app / d
 - Local `server/.env`: `CLIENT_URL=http://localhost:3000,https://trading-bot-sigma-six.vercel.app` (both dev + prod).
 - Verified matrix (fresh boot on :5050): Vercel origin → 200 + correct `Access-Control-Allow-Origin`, localhost → 200, evil → 403, no-token → 401, unknown → 404, bad interval → 400.
 - Bonus: `EADDRINUSE` now prints one clear line (`port X already in use — stop the other server or set PORT=5050`) instead of a crash dump. (Found while testing: the user's own `npm run dev` still held :5000 — all "mystery" failures were port collisions, no code bug.)
+
+### 3.6 Phase 5 — Playwright E2E suite, 17/17 green (2026-09-25, verified)
+- `client/playwright.config.js` (chromium, serial, 90s timeout) + `client/e2e/api.spec.js` (10 tests: health, JSON 404, 401 matrix, login 400, 4 live prices, klines, market 400s, backtest 400 + happy path, full bot lifecycle incl. malformed-id 404) + `client/e2e/app.spec.js` (7 tests: shell on all 6 routes, form login → Desk, authed portfolio unlock, UI bot deploy → start → stop → retire with dialog accept + cleanup, lab verdict + equity chart, ledger UI, candle canvas + timeframe switch).
+- Run: `cd client; npm run test:e2e` (targets running dev servers on :3000/:5000; `E2E_WEB_URL`/`E2E_API_URL` override; webServer entries boot them if absent). Result: **10 passed (3.5s) + 7 passed (35.1s)** vs live Atlas + Binance. One transient flake seen (demo login during a `--watch` reload); clean on rerun.
+- Added `@playwright/test` devDependency + `test:e2e` script; browsers live outside the repo (`ms-playwright` cache).
+
+### 3.7 Phase 6 — Prod E2E + Binance geo-failover (2026-09-25)
+- Prod API suite vs Render: 7/10 pass (health, auth, validation, bot lifecycle all green). The 3 failures were all Binance-dependent: `/market/prices` returned zeros, `/klines` 500.
+- Root cause: `api.binance.com` geo-blocks US datacenter IPs (HTTP 451) — Render Oregon egress is blocked, while local dev works fine.
+- Fix in `server/src/services/binance.js`: transparent host failover — try `api.binance.com` (or `BINANCE_HOST` override), fall back to `api.binance.us` (identical REST shape, all 4 symbols listed). Failover logs `[binance] failover in use`. Verified locally: forced dead primary → `.us` served live ETH price + BTC klines; normal path still hits `.com` first.
+- Local API suite re-run after fix: 10/10. Awaiting push + Render redeploy, then prod re-run (API + UI suites).
 Frontend dev-log review (Next 14.2.35 `next dev`): all 6 routes compile clean — zero warnings, zero errors, zero stderr output; `GET / /bots /login /backtest /history /markets/BTCUSDT` → all 200. Backend log review: pre-login 401s are correct signed-out behavior; post-login portfolio/bots/trades/backtest 200; bot start→stop→delete lifecycle 200; `- - ms - -` lines are aborted prefetch/StrictMode requests (harmless); 304s are Express ETag revalidations (harmless).
 
 ### 3.5 Known gaps (stated so reviewers see judgment, not oversights)
