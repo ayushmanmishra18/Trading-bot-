@@ -5,7 +5,7 @@ import api from '../../lib/api';
 
 export default function Login() {
   const [mode, setMode] = useState('login');
-  const [form, setForm] = useState({ name: '', email: 'demo@college.edu', password: 'demo1234' });
+  const [form, setForm] = useState({ name: '', email: 'demo@tradepilot.app', password: 'demo1234' });
   const [msg, setMsg] = useState('');
   const router = useRouter();
 

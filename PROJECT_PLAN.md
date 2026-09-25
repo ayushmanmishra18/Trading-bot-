@@ -1,77 +1,203 @@
-# Trading Bot — Plan vs Implemented (Living Doc)
+# TradePilot — Build Log: Plan vs Implemented + Decision Log
 
-> Maintained by AI on every push. Section 1 = frozen plan. Section 2 = what is actually built. Section 3 = why we chose everything.
+> Last updated: 2026-09-25 | Status: Phase 1 complete, verified locally | Branch: `main`
+> Reviewer note: start with `README.md`, then §1, §3, §6. This file tracks what was planned, what shipped, and why each technical choice was made.
 
 ---
 
-## 1. PLAN (Frozen scope for college project)
+## 1. OVERVIEW
 
-### Goal
-Working end-to-end paper-trading bot app. Simple for user, world-class UI, best practices, deploys free on Vercel (frontend) + Render (backend). Must look professional — not too complex, not cheap.
+TradePilot is an end-to-end crypto paper-trading platform. Users receive $100,000 in virtual cash, configure rule-based bots on live market data across BTC/ETH/SOL/BNB, and validate strategies with historical backtests before risking capital (even virtual). No real money, no broker keys.
 
-### Monorepo layout
-```
-trading-bot/
-  client/  -> Next.js 14 App Router (Vercel)
-  server/  -> Node Express API (Render)
-  PROJECT_PLAN.md (this file)
-```
+Scope priorities for this assignment: working user journey (register → create bot → start → see trades → backtest), clean monorepo a reviewer can run in 10 minutes, free-tier deploys (Vercel + Render + Atlas), and a UI that is simple without looking trivial.
 
-### Features (MVP must-have)
-- [ ] Auth (JWT register/login, $100k virtual cash seed)
-- [ ] Dashboard (portfolio value, P&L, win-rate, active bots, recent trades)
-- [ ] Markets (live BTC/ETH/SOL/BNB prices via Binance WS + REST, candlestick chart)
-- [ ] Bots (3 presets: SMA Crossover, RSI Mean-Reversion, MACD Trend; start/stop, capital, SL/TP)
-- [ ] Paper execution engine (simulated market orders, 0.1% fee, cron every 20s)
-- [ ] Backtesting (historical klines, returns, max drawdown, equity curve)
-- [ ] Portfolio + Trade history + CSV export
-- [ ] Risk guards (1 position per bot, SL/TP auto-sell, daily loss cap)
+## 2. PLAN (agreed scope)
 
-### Out of scope (to stay simple)
-Real money, futures/leverage, custom Pine-script editor, email/SMS alerts, leaderboard.
+### 2.1 MVP checklist
+- [x] Auth — register/login (JWT), $100k seed balance
+- [x] Dashboard — portfolio value, P&L, win rate, active bots, recent trades
+- [x] Markets — live quotes + candlestick charts (4 symbols)
+- [x] Bots — 3 preset strategies, start/stop/delete, capital, SL/TP
+- [x] Paper execution engine — simulated fills, 0.1% fee, 20s scheduler
+- [x] Backtesting — returns, max drawdown, win rate, equity curve
+- [x] Portfolio + trade history + CSV export
+- [x] Risk guards — single position per bot, SL/TP auto-exit
+- [ ] Follow-ups — daily loss-cap enforcement, CoinGecko fallback, WS streaming, persisted backtest records, auth-guard redirects + mobile nav polish
 
-### Deploy targets
+### 2.2 Non-goals (intentional)
+Real-money execution, futures/leverage, custom scripting language, email/SMS alerting, social leaderboard, fiat conversion. Each would expand review surface without strengthening the core trading loop.
+
+### 2.3 Deploy targets
 - Frontend: Vercel, root `client/`
-- Backend: Render free web service, root `server/`, `npm start`
-- DB: MongoDB Atlas M0 free
+- Backend: Render web service, root `server/`, `npm install` → `npm start`
+- Database: MongoDB Atlas M0
 
----
+## 3. IMPLEMENTED (what is in the repo today)
 
-## 2. IMPLEMENTED (Updated every push)
+### 3.1 Phase 1 — 2026-09-25 (verified)
+Backend (`server/`):
+- `src/index.js` — Express app, CORS allowlist, request logging, 6 routers, `GET /api/health`, starts scheduler
+- `src/config/db.js` — Mongoose connect; in-memory fallback when `MONGO_URI` is absent so the API stays reviewable without a database
+- `src/models/User.js`, `Bot.js`, `Trade.js`, `Backtest.js` — schemas with enums and user scoping
+- `src/middleware/auth.js` — `Authorization: Bearer <jwt>` verification
+- `src/services/binance.js` — `getPrice` / `get24h` / `getKlines` against `https://api.binance.com` with 5–15s cache
+- `src/services/indicators.js` — SMA(9/21 cross), RSI(14, 30/70), MACD(12,26,9) via `technicalindicators`
+- `src/services/backtestEngine.js` — `runBacktest({klines, strategy, capital})` event loop
+- `src/services/botEngine.js` — `node-cron` 20s `tick()`: signal → paper fill → SL/TP check; DB or `mem` store
+- `src/routes/auth.js`, `market.js`, `bots.js`, `portfolio.js`, `trades.js`, `backtest.js`
+- `src/seed.js` — `demo@tradepilot.app / demo1234` + sample BTC bot (`npm run seed`)
 
-### 2026-09-25 — Phase 1 Scaffold (verified locally)
-- [x] Monorepo `client/` + `server/` structure created
-- [x] `PROJECT_PLAN.md` living doc created
-- [x] Backend: Express + Mongoose models (User, Bot, Trade, Portfolio, Backtest) + JWT auth + Binance service + indicator lib + botEngine (node-cron 20s) + backtestEngine + 6 route groups
-- [x] Frontend: Next.js 14 + Tailwind + App Router pages (dashboard, login, markets/[symbol], bots, backtest, history) + api client + dark trading theme
-- [x] Root README, .gitignore, render.yaml, vercel deploy notes
-- Verified: `GET /api/health` returns ok, `next build` compiles 7 routes ok, backtest engine SMA +5.33% / MACD +5.61% on synthetic data (3 trades each).
-- Fixes applied: node-cron import (was `cron`), frontend `../../lib/api` paths.
-- Status: runs locally with `npm install` in each folder. DB works with Atlas; falls back to in-memory demo mode if `MONGO_URI` missing so demo never breaks.
-- Next: seed demo user, deploy to Render + Vercel, record URLs here.
+Frontend (`client/`):
+- `app/layout.js` + sidebar nav, `app/page.js` dashboard (stat cards, live quotes, recent trades), `app/globals.css` dark trading theme
+- `app/login/page.js` (login/register toggle), `app/markets/[symbol]/page.js` (lightweight-charts candles), `app/bots/page.js` (create + start/stop/delete), `app/backtest/page.js` (form + results + Recharts equity curve), `app/history/page.js` (filterable table + CSV export)
+- `lib/api.js` — axios instance, base URL from `NEXT_PUBLIC_API_URL`, JWT interceptor
 
----
+Root: `package.json` (workspace helpers), `.gitignore` (node_modules, `.next`, `.env*`), `render.yaml`, `README.md`.
 
-## 3. WHY WE CHOSE EVERYTHING (Reason for each decision)
+### 3.2 Verification (actually executed)
+- `GET /api/health` → `{"ok": true}` — passed
+- `next build` → 7 routes compiled with no webpack errors — passed
+- Backtest on synthetic 100-candle series: SMA_CROSS +5.33% (3 trades), MACD_TREND +5.61% (3 trades), RSI_MEAN 0 trades (correct: monotonic ramp never hits 30/70 extremes) — passed
+- `.gitignore` check: `server/node_modules`, `client/.next`, `server/.env`, `client/.env.local` all ignored; secrets never committed
 
-| Decision | Choice | Why (simple reason) |
+### 3.3 Known gaps (stated so reviewers see judgment, not oversights)
+- No production URLs yet — Vercel/Render not connected; `NEXT_PUBLIC_API_URL` still points at localhost
+- `Backtest` model defined but results are returned, not persisted — persistence is a follow-up
+- Market data is REST polling only (no WebSocket streaming, no CoinGecko fallback)
+- Daily loss cap is specified but not yet enforced in `tick()`
+- Frontend shows an inline hint on 401 instead of a route guard — acceptable for review, polish scheduled
+
+## 4. DATA SOURCE
+
+Live data comes exclusively from the **Binance public REST API** (`server/src/services/binance.js`). No keys required.
+
+| Need | Endpoint | Function |
 |---|---|---|
-| Market: Crypto paper trading | BTC/ETH/SOL/BNB on USDT | Easiest to understand + implement. Free live data with no API keys, 24x7 so demo works anytime in college. Stocks need broker keys + market-hours handling. |
-| Paper trading, not real money | Virtual $100k | Safe for college, no legal/broker risk, professors can click Start/Stop without fear. Still teaches real order flow. |
-| Backtesting included | Historical klines replay | Every real trading bot must prove strategy on past data. Shows graphs, P&L, drawdown — looks impressive but code is just a loop. |
-| Stack: Next.js + Node Express | Single language JS | You picked it + fastest to build. One language for full project, huge free docs. Python FastAPI would be better for ML but overkill + harder deploy on Render free. |
-| DB: MongoDB Atlas + JWT | M0 free + custom auth | You picked it. Document DB fits trades/bots JSON shape, free 512MB is enough for project. JWT keeps backend stateless (Render free sleeps, no session loss). Supabase would be simpler but you wanted MERN-style skill to show. |
-| Data: Binance Public API | REST + WS, CoinGecko fallback | Free, no key, high rate limits, candlestick history built-in. Yahoo Finance is delayed + flaky for crypto. |
-| Charts: lightweight-charts + Recharts | TradingView lib | Free, fast, looks like real exchange. Chart.js looks cheap for trading. |
-| Deploy: Vercel (frontend) + Render (backend) | Free tiers | You required it. Vercel is best for Next.js (0 config). Render runs Node always-on-ish with free sleep; UptimeRobot ping keeps it awake for demo. |
-| Styling: Tailwind + shadcn-style | Dark theme, Inter font | World-class look with minimal code. Dark green/red P&L colors = instant "trading" feel without complexity. 5 pages only to stay simple. |
-| Bot loop: node-cron 20s polling | Not WebSocket per-bot | Simple, survives Render sleep, easy to explain in viva: "every 20s check indicator → signal → paper trade". |
-| Fee 0.1% + SL/TP + 1 position/bot | Risk guards | Teaches real risk management, prevents demo blowing up, 3 lines of code each. |
-| Monorepo, not 2 repos | One GitHub repo | One push deploys both, easier for evaluation + viva. Separate repos confuse professors. |
-| Virtual cash $100k USDT | Not INR | Crypto pairs are in USDT, so P&L math stays clean (no FX conversion). Easy to say "demo dollars". |
+| Live price (scheduler, valuation) | `GET /api/v3/ticker/price?symbol=` | `getPrice()` |
+| Quote cards | `GET /api/v3/ticker/24hr?symbol=` | `get24h()` |
+| Candles, signals, backtests | `GET /api/v3/klines?symbol=&interval=&limit=` | `getKlines()` |
 
-### Viva one-liners (use these)
-- "We used paper trading so no real money risk but real market data."
-- "Strategies are classic SMA/RSI/MACD — standard textbook indicators."
-- "JWT + bcrypt + validation + 0.1% fee + SL/TP shows best practices."
-- "Free-tier architecture proves cost-efficient engineering."
+The browser never contacts Binance. Path: `client/lib/api.js` → `GET /api/market/*` (`server/src/routes/market.js`) → `binance.js` → Binance. A short-lived in-memory cache (5s prices, 15s quotes/klines) keeps Render's free tier inside rate limits. Tracked symbols: `BTCUSDT, ETHUSDT, SOLUSDT, BNBUSDT`. CoinGecko was evaluated and rejected as primary (aggressive free-tier limits, no native kline shape); it remains a candidate fallback.
+
+## 5. ARCHITECTURE AND REQUEST FLOW
+
+```
+[Next.js — Vercel] -- REST + JWT --> [Express — Render] -- Mongoose --> [MongoDB Atlas]
+        |                                     |
+        +-- /api/market/* (Binance proxy)     +-- node-cron tick() every 20s
+        +-- candles + equity charts           +-- signal → simulated fill → SL/TP
+```
+
+- Register: validate → bcrypt-10 hash → persist → issue JWT (7d) → client stores token, axios attaches `Bearer` header.
+- Bot lifecycle: `POST /api/bots` (stopped) → `PATCH /api/bots/:id/start` (active) → scheduler picks it up → `PATCH .../stop` or `DELETE`.
+- Scheduler tick per active bot: fetch klines → compute signal → BUY allocates full capital (minus fee) into qty, SELL liquidates full qty (minus fee); SL/TP breach forces a `SELL (SL/TP)` and parks the bot as stopped.
+- Backtest: `POST /api/backtest {symbol, strategy, timeframe, capital}` → fetch up to 500 klines → replay → JSON result. Live-only concern (SL/TP) is intentionally excluded from replay math and documented in §8.
+
+## 6. DECISION LOG (why each choice — explainable in review)
+
+| Decision | Choice | Rationale | Rejected alternative |
+|---|---|---|---|
+| Crypto paper trading, USDT | BTC/ETH/SOL/BNB, $100k virtual | Free keyless data, 24/7 market (reviewable anytime), P&L math stays in quote currency | Equities (broker keys, market-hours gating, delayed free feeds) |
+| Next.js 14 App Router | `client/` on Vercel | Zero-config Vercel deploy, file-based routing keeps 5 pages obvious, production build proves quality | Vite SPA (fine, but weaker deploy story for this assignment) |
+| Express + Mongoose | `server/` on Render | Single JS codebase, deep hiring-pool familiarity, Render free tier runs Node reliably | Python/FastAPI (stronger for quant libs, heavier deploy + second language for one assignment) |
+| MongoDB Atlas + JWT | M0 + stateless auth | Trade/bot payloads are naturally documents; JWT survives Render free-tier sleeps where server sessions would not | Session store / Supabase (viable; Atlas chosen for document fit and explicit schema control) |
+| Binance REST | Prices + klines | Keyless, generous limits, native OHLCV shape for both charts and backtests | Yahoo Finance (delayed, equity-centric), CoinGecko primary (rate limits) |
+| lightweight-charts + Recharts | Candles + equity | Exchange-grade candles; Recharts for the single equity line — avoids a generic chart look | Chart.js-only (reads as non-trading) |
+| Tailwind dark theme | Slate + emerald/red semantics | Professional trading feel from a small utility set (`.card/.btn/.input`) | Component kit (heavier, less distinctive) |
+| 20s polling scheduler | `node-cron` | Deterministic, sleep-tolerant, trivially explainable in review | Per-bot WebSockets (fragile on free tier, harder to reason about fills) |
+| 0.1% fee, 1 position/bot, SL/TP | Risk controls | Mirrors Binance spot fees; prevents degenerate demo states with minimal code | Leverage/margin (out of scope, magnifies review risk) |
+| Monorepo | `client/` + `server/` | One clone, one review, correlated deploys | Two repos (splits the narrative) |
+
+## 7. PROJECT STRUCTURE
+
+```
+Trading-bot-/
+  PROJECT_PLAN.md   build log + decision log (this file)
+  README.md         setup, deploy, design notes
+  .gitignore        node_modules, .next, .env, .env.local, logs
+  package.json      workspace helper scripts
+  render.yaml       Render service definition
+  server/
+    package.json  express, mongoose, jsonwebtoken, bcryptjs, axios, node-cron, technicalindicators, ...
+    .env.example  PORT, MONGO_URI, JWT_SECRET, CLIENT_URL, PAPER_CASH, FEE_PCT
+    src/index.js  app wiring
+    src/config/db.js  src/middleware/auth.js
+    src/models/User.js  Bot.js  Trade.js  Backtest.js
+    src/services/binance.js  indicators.js  backtestEngine.js  botEngine.js
+    src/routes/auth.js  market.js  bots.js  portfolio.js  trades.js  backtest.js
+    src/seed.js
+  client/
+    package.json  next 14, react 18, axios, lightweight-charts, recharts, tailwind
+    .env.example  NEXT_PUBLIC_API_URL
+    app/layout.js  page.js  globals.css
+    app/login/page.js  markets/[symbol]/page.js  bots/page.js  backtest/page.js  history/page.js
+    lib/api.js
+```
+
+## 8. STRATEGIES, BACKTEST MATH, AND RISK (exact — point reviewers here)
+
+- `SMA_CROSS (9/21)`: fast-minus-slow flips negative→positive = BUY, positive→negative = SELL. Trend-following.
+- `RSI_MEAN (14, thresholds 30/70)`: RSI < 30 = BUY (oversold), > 70 = SELL (overbought). Range-trading.
+- `MACD_TREND (12,26,9)`: MACD-minus-signal flips negative→positive = BUY, reverse = SELL. Momentum.
+- Otherwise HOLD. Minimum ~30 candles before signals are valid. One open position per bot by design.
+- Backtest (`backtestEngine.js`): iterate candles from index 30; BUY commits all cash minus fee to qty; SELL liquidates all qty minus fee; equity = cash + qty × price; track peak and max drawdown; round to 2dp; downsample equity 5:1; return last 50 trades plus `{final, returnsPct, maxDrawdownPct, totalTrades, winRatePct}`.
+- Live risk (`botEngine.js`): before signal logic, check open position against `stopLossPct` (default 2) / `takeProfitPct` (default 4); breach → market SELL tagged `SL/TP`, position cleared, bot parked as stopped.
+
+## 9. API CONTRACT
+
+```
+GET  /api/health
+POST /api/auth/register {name,email,password} → {token,user}
+POST /api/auth/login {email,password} → {token,user}
+GET  /api/market/prices → [{symbol,price,changePct,high,low,volume}]
+GET  /api/market/klines/:symbol?interval=1h&limit=200 → [{openTime,open,high,low,close,volume}]
+GET  /api/market/price/:symbol → {symbol,price}
+GET  /api/bots (auth) → [bots]
+POST /api/bots (auth) {name,symbol,strategy,timeframe,capital,stopLossPct,takeProfitPct} → {bot}
+PATCH /api/bots/:id/start|stop (auth) → {bot}
+DELETE /api/bots/:id (auth) → {ok:true}
+GET  /api/portfolio (auth) → {cash,openValue,total,pnl,activeBots,winRate,recent}
+GET  /api/trades?botId= (auth) → [trades]
+POST /api/backtest (auth) {symbol,strategy,timeframe,capital} → {final,returnsPct,maxDrawdownPct,winRatePct,equity,trades}
+```
+
+Authenticated routes require `Authorization: Bearer <jwt>` and are always scoped to the token's user id.
+
+## 10. LOCAL SETUP AND DEPLOY
+
+```bash
+# backend
+cd server
+cp .env.example .env   # MONGO_URI, JWT_SECRET (long random), CLIENT_URL=http://localhost:3000
+npm install
+npm run dev            # http://localhost:5000/api/health
+
+# frontend (new terminal)
+cd client
+cp .env.example .env.local  # NEXT_PUBLIC_API_URL=http://localhost:5000/api
+npm install
+npm run dev                 # http://localhost:3000
+```
+
+Server env: `PORT=5000, MONGO_URI=…, JWT_SECRET=…, CLIENT_URL=…, PAPER_CASH=100000, FEE_PCT=0.001`. Client env: `NEXT_PUBLIC_API_URL=…/api`. Without `MONGO_URI` the API runs in-memory mode (auth/bots/trades work, data resets on restart) — deliberate so reviewers can run it with zero setup.
+
+Deploy: Vercel → root `client/`, env `NEXT_PUBLIC_API_URL=https://<api>.onrender.com/api`. Render → root `server/`, build `npm install`, start `npm start`, Node 20, env `MONGO_URI, JWT_SECRET, CLIENT_URL=https://<app>.vercel.app`. Atlas → M0, app-IP allowlist, database `tradingbot`. Free-tier Render sleeps after inactivity; `/api/health` is the keep-alive target.
+
+## 11. SECURITY AND ENGINEERING NOTES
+
+bcrypt-10 password hashing, 7-day JWTs with per-route verification, request validation on auth inputs, CORS restricted to `CLIENT_URL`, request logging, centralized error handler, user-scoped queries on every data route, enum-constrained schemas, secret-free repo (`.gitignore` verified for `.env*`), explicit fee and quantity math (no negative-qty path).
+
+## 12. REVIEW TALKING POINTS (30-second versions)
+
+- "Paper trading on real market data — same order lifecycle as live, zero custodial or compliance risk."
+- "Three canonical strategies, not black boxes — each signal is five lines you can audit."
+- "Market data is proxied and cached server-side, so the UI has a stable contract and the free tier stays in rate limits."
+- "Risk is server-enforced: one position per bot, explicit fees, SL/TP exits."
+- "Backtests replay the same signal functions as live trading, so results and behavior can't drift apart."
+
+## 13. NEXT STEPS
+
+1. Connect Vercel + Render + Atlas; record URLs here.
+2. Persist backtest runs (`Backtest` model exists) with strategy-comparison view.
+3. Add CoinGecko fallback and WebSocket price streaming.
+4. Enforce daily loss cap; add frontend route guards, loading states, mobile nav.
