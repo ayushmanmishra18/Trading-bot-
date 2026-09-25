@@ -1,0 +1,11 @@
+{
+  "name": "trading-bot-monorepo",
+  "private": true,
+  "version": "1.0.0",
+  "description": "College project: crypto paper-trading bot (Next.js + Express + MongoDB)",
+  "scripts": {
+    "install:all": "npm --prefix server install && npm --prefix client install",
+    "dev:server": "npm --prefix server run dev",
+    "dev:client": "npm --prefix client run dev"
+  }
+}
