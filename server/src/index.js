@@ -18,13 +18,19 @@ app.use('/api/portfolio', require('./routes/portfolio'));
 app.use('/api/trades', require('./routes/trades'));
 app.use('/api/backtest', require('./routes/backtest'));
 
+// JSON 404 for unknown API routes (Express default is HTML)
+app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
+
 app.use((err, req, res, next) => {
   console.error(err);
   res.status(500).json({ error: 'Server error' });
 });
 
 const PORT = process.env.PORT || 5000;
-connectDB(process.env.MONGO_URI).finally(() => {
+// A bad MONGO_URI must never crash the API: fall back to in-memory mode.
+connectDB(process.env.MONGO_URI).catch((e) => {
+  console.log('[db] MongoDB unreachable, running in in-memory demo mode:', e.message);
+}).finally(() => {
   app.listen(PORT, () => console.log(`[api] listening on ${PORT}`));
   startBotLoop();
 });

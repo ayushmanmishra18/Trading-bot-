@@ -1,7 +1,7 @@
 # TradePilot — Build Log: Plan vs Implemented + Decision Log
 
 > Last updated: 2026-09-25 | Status: Phase 1 complete, verified locally | Branch: `main`
-> Reviewer note: start with `README.md`, then §1, §3, §6. This file tracks what was planned, what shipped, and why each technical choice was made.
+> Reviewer note: start with `README.md`, then `DOCUMENTATION.md` (full guide in plain words), then §1, §3, §6 below. This file tracks what was planned, what shipped, and why each technical choice was made.
 
 ---
 
@@ -60,7 +60,34 @@ Root: `package.json` (workspace helpers), `.gitignore` (node_modules, `.next`, `
 - Backtest on synthetic 100-candle series: SMA_CROSS +5.33% (3 trades), MACD_TREND +5.61% (3 trades), RSI_MEAN 0 trades (correct: monotonic ramp never hits 30/70 extremes) — passed
 - `.gitignore` check: `server/node_modules`, `client/.next`, `server/.env`, `client/.env.local` all ignored; secrets never committed
 
-### 3.3 Known gaps (stated so reviewers see judgment, not oversights)
+### 3.3 Phase 2 — Signature UI redesign + full smoke test (2026-09-25, verified)
+- Frontend rebuilt around a custom "pulse terminal" identity: Space Grotesk display + Inter body + JetBrains Mono numerals, ink background with aurora wash + film grain, hand-drawn SVG pulse mark (no emoji, no kit components).
+- New shell (`app/shell.js`): 76px icon rail, live ticker tape (20s refresh), sticky top bar, mobile bottom tabs. Shared primitives in `components/ui.js` (Sparkline, Sigil, Verdict, TickerTape, Empty).
+- Pages: dashboard bento (net-worth hero + exposure rail + executions ledger + coin cards with sparklines), terminal-style market page with launch ticket, strategy-dossier bot floor with SL/TP rail visual + tactile switch, lab-bench backtest with verdict banner + worst-print marker, filterable ledger with CSV, split-screen login with brand panel.
+- Fixed corrupted `.next` cache (stale webpack chunks from interrupted build); clean `next build` → 7 routes, `BUILD_ID` present.
+- Backend smoke: `GET /api/health` → `{ok:true}`; `GET /api/market/prices` → 4 symbols live (BTCUSDT @ $83,912 at test time).
+- Frontend smoke (prod `next start :3100`): `/`, `/bots`, `/login`, `/backtest`, `/history`, `/markets/BTCUSDT` → all HTTP 200 with TradePilot brand present.
+
+### 3.4 Phase 3 — Audit hardening + Atlas live + Next CVE patch (2026-09-25, verified)
+Backend fixes (all verified against Atlas unless noted):
+- CRITICAL: bad `MONGO_URI` no longer crashes the API — `connectDB` fails fast (5s `serverSelectionTimeoutMS`) and boot falls back to in-memory mode with a log line. Proven: booted with `mongodb://bad-host` → `/api/health` ok.
+- Bots: `POST /` now validates strategy/symbol/timeframe whitelists, capital ≥ 100, SL 0–50, TP 0–200, name ≤ 60 chars → 400 on garbage (was: zombie bots accepted). `PATCH/DELETE :id` guard malformed ObjectIds → 404 instead of CastError 500.
+- Backtest: same whitelists + capital floor → 400 (was: silent HOLD / broken math).
+- Market: `interval` whitelisted, `symbol` format-checked → 400 (was: Binance error leaked as 500).
+- Auth: login now returns 400 on invalid input (was: skipped `validationResult`); emails trimmed + lowercased on register/login (was: case-dupe accounts possible).
+- Portfolio: mem-mode `recent` now newest-first (was: oldest 10); P&L baseline uses `PAPER_CASH` env (was: hardcoded 100000).
+- Scheduler: `tick()` list-failures and rejections are caught — a DB flap can no longer kill the Render process.
+- Added JSON 404 for unknown `/api/*` routes.
+Frontend fixes:
+- Next.js 14.2.5 → 14.2.35 (published CVE patch branch); clean rebuild → 7 routes, `BUILD_ID` valid. Note: an aborted `npm install` had left `node_modules/.bin` broken (`'next' is not recognized`) — repaired with full reinstall.
+- Added sign-out (rail icon when authed, clears token + redirects) — previously no logout existed.
+- Axios 401 interceptor drops dead tokens so UI falls back to signed-out state.
+- Market terminal shows an explicit feed-error banner instead of a blank chart on fetch failure.
+DB live verification (Atlas `tradingbot`): seed created `demo@tradepilot.app / demo1234` + sample bot; login → portfolio ($100,000) → backtest BTC/SMA +7.5% (22 trades on live klines) → bot lifecycle create → start(active) → stop(stopped) → delete(ok) → trades readable. All HTTP expectations met (400/404/200).
+`.env` with Atlas URI + generated JWT secret lives only in `server/.env` (gitignored, never committed).
+Frontend dev-log review (Next 14.2.35 `next dev`): all 6 routes compile clean — zero warnings, zero errors, zero stderr output; `GET / /bots /login /backtest /history /markets/BTCUSDT` → all 200. Backend log review: pre-login 401s are correct signed-out behavior; post-login portfolio/bots/trades/backtest 200; bot start→stop→delete lifecycle 200; `- - ms - -` lines are aborted prefetch/StrictMode requests (harmless); 304s are Express ETag revalidations (harmless).
+
+### 3.5 Known gaps (stated so reviewers see judgment, not oversights)
 - No production URLs yet — Vercel/Render not connected; `NEXT_PUBLIC_API_URL` still points at localhost
 - `Backtest` model defined but results are returned, not persisted — persistence is a follow-up
 - Market data is REST polling only (no WebSocket streaming, no CoinGecko fallback)

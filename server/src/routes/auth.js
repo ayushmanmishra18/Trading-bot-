@@ -21,7 +21,10 @@ router.post('/register',
   async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
-    const { name, email, password } = req.body;
+    const name = String(req.body.name || '').trim();
+    const email = String(req.body.email || '').trim().toLowerCase();
+    const { password } = req.body;
+    if (!name) return res.status(400).json({ error: 'name is required' });
     const hash = await bcrypt.hash(password, 10);
     const User = await getUserModel();
     try {
@@ -43,7 +46,10 @@ router.post('/register',
 router.post('/login',
   body('email').isEmail(), body('password').notEmpty(),
   async (req, res) => {
-    const { email, password } = req.body;
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+    const email = String(req.body.email || '').trim().toLowerCase();
+    const { password } = req.body;
     const User = await getUserModel();
     try {
       if (User) {

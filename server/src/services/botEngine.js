@@ -38,7 +38,14 @@ async function updateBot(bot, patch) {
 }
 
 async function tick() {
-  const bots = await listActiveBots();
+  let bots;
+  try {
+    bots = await listActiveBots();
+  } catch (e) {
+    // DB flap must never kill the scheduler process.
+    console.log('[bot] list error', e.message);
+    return;
+  }
   for (const bot of bots) {
     try {
       const klines = await getKlines(bot.symbol, bot.timeframe || '1h', 100);
@@ -74,8 +81,8 @@ async function tick() {
 }
 
 function startBotLoop() {
-  // Every 20 seconds — simple + Render-safe. Explainable in viva.
-  cron.schedule('*/20 * * * * *', tick);
+  // Every 20 seconds — deterministic, sleep-tolerant, easy to reason about.
+  cron.schedule('*/20 * * * * *', () => tick().catch((e) => console.log('[bot] tick error', e.message)));
   console.log('[bot] loop started (20s)');
 }
 

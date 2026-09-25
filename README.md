@@ -4,7 +4,7 @@ End-to-end paper-trading platform: live market data, rule-based bots, backtestin
 
 **Stack:** Next.js 14 (Vercel) + Express + Mongoose (Render) + MongoDB Atlas. Live data from Binance public REST API. No API keys required.
 
-See `PROJECT_PLAN.md` for build log (Plan vs Implemented) and decision rationale.
+See `DOCUMENTATION.md` for the full end-to-end guide (plain words), and `PROJECT_PLAN.md` for the build log (Plan vs Implemented) and decision rationale.
 
 ## Features
 

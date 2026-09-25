@@ -9,6 +9,7 @@ router.use(auth);
 
 router.get('/', async (req, res) => {
   try {
+    const PAPER_CASH = parseFloat(process.env.PAPER_CASH || '100000');
     const useDb = mongoose.connection.readyState === 1;
     let bots, trades;
     if (useDb) {
@@ -16,7 +17,8 @@ router.get('/', async (req, res) => {
       trades = await require('../models/Trade').find({ userId: req.user.id }).sort({ createdAt: -1 }).limit(100);
     } else {
       bots = mem.bots.filter((b) => String(b.userId) === String(req.user.id));
-      trades = mem.trades.filter((t) => String(t.userId) === String(req.user.id)).slice(-100);
+      // mem store is chronological — newest last, so reverse to newest-first
+      trades = mem.trades.filter((t) => String(t.userId) === String(req.user.id)).slice(-100).reverse();
     }
     // Live value open positions at current price
     let openValue = 0;
@@ -29,7 +31,7 @@ router.get('/', async (req, res) => {
       }
     }
     const invested = bots.reduce((s, b) => s + (b.position && b.position.qty > 0 ? b.capital : 0), 0);
-    const cash = parseFloat(process.env.PAPER_CASH || '100000') - invested;
+    const cash = PAPER_CASH - invested;
     const total = cash + openValue;
     const sells = trades.filter((t) => t.side === 'SELL');
     const wins = sells.filter((t) => (t.pnl || 0) > 0).length;
@@ -37,7 +39,7 @@ router.get('/', async (req, res) => {
       cash: Math.round(cash * 100) / 100,
       openValue: Math.round(openValue * 100) / 100,
       total: Math.round(total * 100) / 100,
-      pnl: Math.round((total - 100000) * 100) / 100,
+      pnl: Math.round((total - PAPER_CASH) * 100) / 100,
       activeBots: bots.filter((b) => b.status === 'active').length,
       winRate: sells.length ? Math.round((wins / sells.length) * 10000) / 100 : 0,
       recent: trades.slice(0, 10)
